@@ -73,6 +73,7 @@
     'vertical-align:text-bottom!important;}',
     '.hk-msg strong,.hk-msg b{font-weight:600;}',
     '.hk-msg ul,.hk-msg ol{margin:6px 0;padding-left:18px;}',
+    '.hk-msg li{margin-bottom:3px;}',
     '.hk-msg p{margin:0 0 6px;}',
     '.hk-msg p:last-child{margin:0;}',
     '.hk-typing{display:flex;gap:5px;align-items:center;align-self:flex-start;padding:10px 14px;',
@@ -108,6 +109,14 @@
     '.hk-lead-form-submit:hover{opacity:.88;}',
     '.hk-lead-form-submit:disabled{opacity:.45;}',
     '.hk-lead-note{font-size:11px;color:#aaa;margin-top:4px;text-align:center;}',
+    /* form open button */
+    '.hk-form-open-btn{display:flex;align-items:center;justify-content:center;gap:6px;',
+    'background:' + cfg.secondaryColor + ';color:' + cfg.primaryColor + ';border:none;border-radius:8px;',
+    'padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;width:100%;',
+    'transition:opacity .15s;margin-top:6px;}',
+    '.hk-form-open-btn:hover{opacity:.88;}',
+    '.hk-form-open-btn svg{pointer-events:none;flex-shrink:0;}',
+    /* whatsapp cta */
     '.hk-wsp-cta{display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;',
     'border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;text-decoration:none;',
     'margin:6px 0;justify-content:center;}',
@@ -120,13 +129,11 @@
   document.head.appendChild(style);
 
   /* ── BUILD DOM ───────────────────────────────────────────────────────── */
-  /* Bubble button */
   var btn = document.createElement('button');
   btn.className = 'hk-widget-btn';
   btn.setAttribute('aria-label', 'Abrir chat Henko');
   btn.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 
-  /* Chat window */
   var win = document.createElement('div');
   win.className = 'hk-widget-window';
   win.setAttribute('role', 'dialog');
@@ -215,6 +222,44 @@
     if (el) el.remove();
   }
 
+  /* ── TYPEWRITER ──────────────────────────────────────────────────────── */
+  var TW_WORD_MS  = 22;   // ms entre palabras
+  var TW_PAUSE_MS = 90;   // ms extra después de . ? !
+
+  function typewriteBot(rawText, el, onDone) {
+    var tokens = rawText.match(/[^\s]+|\s+/g) || [''];
+    var i = 0;
+    var built = '';
+
+    function step() {
+      if (i >= tokens.length) {
+        el.innerHTML = md(built);
+        scrollToBottom();
+        if (onDone) onDone();
+        return;
+      }
+      built += tokens[i++];
+      el.innerHTML = md(built);
+      scrollToBottom();
+      var last = built.replace(/\s+$/, '').slice(-1);
+      setTimeout(step, /[.!?]/.test(last) ? TW_PAUSE_MS : TW_WORD_MS);
+    }
+    step();
+  }
+
+  /* Crea burbuja bot, typewritea y guarda. Usar para mensajes nuevos. */
+  function pushBotTypewritten(text, onDone) {
+    var el = document.createElement('div');
+    el.className = 'hk-msg hk-msg-bot';
+    $msgs.appendChild(el);
+    scrollToBottom();
+    messages.push({ role: 'bot', text: text });
+    saveMsgs(messages);
+    typewriteBot(text, el, onDone);
+    return el;
+  }
+
+  /* pushMsg instant — para mensajes de usuario y para renderSaved. */
   function pushMsg(role, text, opts) {
     opts = opts || {};
     var el = document.createElement('div');
@@ -317,6 +362,32 @@
     });
   }
 
+  /* Botón que abre el formulario bajo demanda (no auto-open). */
+  function showFormButton(lastUserMsg) {
+    if (leadFormShown) return;
+    var wrapper = document.createElement('div');
+    wrapper.className = 'hk-msg hk-msg-bot';
+    wrapper.style.maxWidth = '94%';
+
+    var openBtn = document.createElement('button');
+    openBtn.className = 'hk-form-open-btn';
+    openBtn.innerHTML = [
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">',
+      '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+      '</svg>',
+      ' Completar formulario'
+    ].join('');
+
+    openBtn.addEventListener('click', function () {
+      wrapper.remove();
+      showLeadForm(lastUserMsg);
+    });
+
+    wrapper.appendChild(openBtn);
+    $msgs.appendChild(wrapper);
+    scrollToBottom();
+  }
+
   /* ── SEND MESSAGE ────────────────────────────────────────────────────── */
   function sendMessage(text) {
     text = (text || '').trim();
@@ -352,13 +423,14 @@
         clearTimeout(timer);
         hideTyping();
         var resp = (data && data.response) || 'Lo siento, no pude procesar tu mensaje. Por favor intenta de nuevo.';
-        pushMsg('bot', resp);
-        if (data && data.showLeadForm) {
-          showLeadForm(text);
-        }
-        isBusy = false;
-        $send.disabled = false;
-        $input.focus();
+        var showForm = !!(data && data.showLeadForm);
+
+        pushBotTypewritten(resp, function () {
+          if (showForm) showFormButton(text);
+          isBusy = false;
+          $send.disabled = false;
+          $input.focus();
+        });
       })
       .catch(function (e) {
         clearTimeout(timer);
@@ -388,7 +460,7 @@
       renderSaved();
       if (messages.length === 0) {
         setTimeout(function () {
-          pushMsg('bot', cfg.welcomeMessage, { skipLeadDetect: true });
+          pushBotTypewritten(cfg.welcomeMessage, null);
         }, 380);
       }
     }
@@ -419,7 +491,6 @@
     this.style.height = Math.min(this.scrollHeight, 100) + 'px';
   });
 
-  /* Close on outside click */
   document.addEventListener('click', function (e) {
     if (isOpen && !win.contains(e.target) && e.target !== btn) closeWidget();
   });
