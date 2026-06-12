@@ -62,9 +62,9 @@
     '.hk-header-info{flex:1;min-width:0;}',
     '.hk-header-name{color:#fff;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.hk-header-sub{color:rgba(255,255,255,.82);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-    '.hk-header-close{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.8);',
+    '.hk-header-reset,.hk-header-close{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.8);',
     'padding:4px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:color .15s;}',
-    '.hk-header-close:hover{color:#fff;}',
+    '.hk-header-reset:hover,.hk-header-close:hover{color:#fff;}',
     '.hk-messages{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px;}',
     '.hk-msg{max-width:82%;border-radius:12px;padding:10px 13px;font-size:14px;line-height:1.5;word-break:break-word;}',
     '.hk-msg-user{align-self:flex-end;background:' + cfg.primaryColor + ';color:#fff;border-bottom-right-radius:4px;}',
@@ -150,6 +150,9 @@
     '    <div class="hk-header-name">' + esc(cfg.agentName) + '</div>',
     '    <div class="hk-header-sub">' + esc(cfg.agentSubtitle) + '</div>',
     '  </div>',
+    '  <button class="hk-header-reset" aria-label="Reiniciar chat">',
+    '    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3"/></svg>',
+    '  </button>',
     '  <button class="hk-header-close" aria-label="Cerrar chat">',
     '    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     '  </button>',
@@ -176,6 +179,7 @@
   var $input  = win.querySelector('#hk-input');
   var $send   = win.querySelector('#hk-send');
   var $close  = win.querySelector('.hk-header-close');
+  var $reset  = win.querySelector('.hk-header-reset');
 
   var isOpen    = false;
   var isBusy    = false;
@@ -378,7 +382,8 @@
       ' Completar formulario'
     ].join('');
 
-    openBtn.addEventListener('click', function () {
+    openBtn.addEventListener('click', function (e) {
+      e.stopPropagation();  /* evita que wrapper.remove() rompa win.contains() y cierre el widget */
       wrapper.remove();
       showLeadForm(lastUserMsg);
     });
@@ -476,6 +481,21 @@
   /* ── EVENTS ──────────────────────────────────────────────────────────── */
   btn.addEventListener('click', function () { isOpen ? closeWidget() : openWidget(); });
   $close.addEventListener('click', closeWidget);
+  $reset.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!confirm('¿Reiniciar la conversación?')) return;
+    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(LAST_KEY);
+    sessionStorage.removeItem(MSGS_KEY);
+    messages = [];
+    welcomed = false;
+    leadFormShown = false;
+    isBusy = false;
+    $send.disabled = false;
+    $msgs.innerHTML = '';
+    welcomed = true;
+    setTimeout(function () { pushBotTypewritten(cfg.welcomeMessage, null); }, 200);
+  });
 
   $send.addEventListener('click', function () { sendMessage($input.value); });
 
